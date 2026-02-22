@@ -1,77 +1,91 @@
-// app/products/[id]/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
-import { notFound } from 'next/navigation';
+import { useCartStore } from '@/store/cartStore';
+import ReviewSection from '@/components/ReviewSection';
+import { ShoppingCart, ArrowLeft, ShieldCheck, Truck } from 'lucide-react';
 import Link from 'next/link';
-import AddToCartButton from '@/components/AddToCartButton';
+import toast from 'react-hot-toast';
 
-// ฟังก์ชันดึงข้อมูลสินค้า 1 ชิ้นจาก Supabase ตาม ID
-async function getProduct(id: string) {
-  const { data: product, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('id', id)
-    .single();
+export default function ProductDetailPage() {
+  const { id } = useParams();
+  const [product, setProduct] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const addItem = useCartStore((state) => state.addItem);
 
-  if (error) {
-    console.error('Error fetching product:', error);
-    return null;
-  }
-  return product;
-}
+  useEffect(() => {
+    const fetchProduct = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-export default async function ProductDetail({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> 
-}) {
-  const resolvedParams = await params;
-  
-  // เรียกใช้ฟังก์ชัน getProduct (แก้ชื่อให้ตรงกัน)
-  const product = await getProduct(resolvedParams.id);
+      if (error) {
+        console.error(error);
+      } else {
+        setProduct(data);
+      }
+      setLoading(false);
+    };
+    fetchProduct();
+  }, [id]);
 
-  // ถ้าไม่เจอสินค้า ให้โยนไปหน้า 404
-  if (!product) {
-    notFound();
-  }
+  if (loading) return <div className="p-20 text-center font-sans">กำลังโหลดข้อมูลสินค้า...</div>;
+  if (!product) return <div className="p-20 text-center font-sans">ไม่พบสินค้านี้</div>;
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-4xl">
-      <Link href="/" className="text-blue-600 hover:underline mb-6 inline-block">
-        &larr; กลับไปหน้าแรก
+    <main className="container mx-auto px-4 py-10 font-sans">
+      <Link href="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black mb-8 transition">
+        <ArrowLeft size={20} /> กลับหน้าแรก
       </Link>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        
-        {/* ฝั่งซ้าย: รูปภาพสินค้า */}
-        <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden relative">
-          {product.image_url ? (
-            <img 
-              src={product.image_url} 
-              alt={product.name}
-              className="object-cover w-full h-full"
-            />
-          ) : (
-            <div className="flex items-center justify-center w-full h-full text-gray-400">
-              ไม่มีรูปภาพ
-            </div>
-          )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-20">
+        {/* รูปสินค้า */}
+        <div className="bg-gray-100 rounded-3xl overflow-hidden shadow-inner">
+          <img 
+            src={product.image_url} 
+            alt={product.name} 
+            className="w-full h-full object-cover hover:scale-105 transition duration-500"
+          />
         </div>
 
-        {/* ฝั่งขวา: รายละเอียดสินค้า */}
+        {/* ข้อมูลสินค้า */}
         <div className="flex flex-col justify-center">
-          <h1 className="text-3xl font-bold mb-4">{product.name}</h1>
-          <p className="text-2xl font-semibold text-blue-600 mb-6">฿{product.price}</p>
+          <h1 className="text-4xl font-black mb-4 tracking-tight">{product.name}</h1>
+          <p className="text-3xl font-bold text-blue-600 mb-6">฿{product.price.toLocaleString()}</p>
           
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-2">รายละเอียดสินค้า:</h2>
-            <p className="text-gray-600 whitespace-pre-line">{product.description}</p>
+          <div className="bg-gray-50 p-6 rounded-2xl mb-8">
+            <p className="text-gray-600 leading-relaxed">
+              {product.description || 'ไม่มีรายละเอียดเพิ่มเติมสำหรับสินค้านี้'}
+            </p>
           </div>
 
-          {/* 🟢 เรียกใช้ Component ปุ่มเพิ่มลงตะกร้า พร้อมส่งข้อมูล product ไปให้ */}
-          <AddToCartButton product={product} />
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <ShieldCheck className="text-green-500" size={18} /> รับประกันคุณภาพ
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Truck className="text-blue-500" size={18} /> ส่งด่วนใน 1-3 วัน
+            </div>
+          </div>
 
+          <button 
+            onClick={() => {
+              addItem(product);
+              toast.success('เพิ่มลงตะกร้าแล้ว');
+            }}
+            className="flex items-center justify-center gap-3 w-full bg-black text-white py-5 rounded-2xl font-bold text-lg hover:bg-gray-800 transition shadow-lg active:scale-95"
+          >
+            <ShoppingCart size={24} /> เพิ่มลงตะกร้าสินค้า
+          </button>
         </div>
       </div>
+
+      {/* ระบบรีวิว (เรียกใช้ Component ที่เราสร้างคราวก่อน) */}
+      <ReviewSection productId={product.id} />
     </main>
   );
 }

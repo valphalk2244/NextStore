@@ -14,6 +14,7 @@ export default function AddToCartButton({ product }: { product: any }) {
       name: product.name,
       price: product.price,
       image_url: product.image_url,
+      quantity: 1,
     });
     toast.success('เพิ่มสินค้าลงตะกร้าแล้ว! 🛒'); // ถ้ามีเวลาค่อยเปลี่ยนเป็น Toast สวยๆ ทีหลังได้
   };

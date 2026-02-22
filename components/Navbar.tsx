@@ -1,57 +1,84 @@
-// components/Navbar.tsx
 'use client';
 
-import Link from 'next/link';
-import { useCartStore } from '@/store/cartStore';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { ShoppingCart, User, LogOut, LayoutDashboard } from 'lucide-react';
+import { useCartStore } from '@/store/cartStore';
+import { supabase } from '@/utils/supabase';
+import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 export default function Navbar() {
-  const [isMounted, setIsMounted] = useState(false);
-  const items = useCartStore((state) => state.items);
+  const { items } = useCartStore();
+  const [user, setUser] = useState<any>(null);
+  const router = useRouter();
+  const itemCount = items.reduce((total, item) => total + item.quantity, 0);
 
-  // แก้ปัญหา Hydration ของ Next.js
-  useEffect(() => setIsMounted(true), []);
+  // 🚩 แก้ไข: ใส่ Email แอดมินของคุณที่นี่
+  const ADMIN_EMAIL = "admin@nextshop.com"; 
 
-  // นับจำนวนชิ้นทั้งหมดในตะกร้า
-  const totalItems = items.reduce((total, item) => total + item.quantity, 0);
+  useEffect(() => {
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    };
+    getSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success('ออกจากระบบแล้ว');
+    router.push('/');
+    router.refresh();
+  };
+
+  const isAdmin = user?.email === ADMIN_EMAIL;
 
   return (
-    <nav className="bg-white border-b sticky top-0 z-50">
+    <nav className="border-b bg-white sticky top-0 z-50 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        
-        {/* โลโก้ซ้ายสุด กดแล้วกลับหน้าแรก */}
-        <Link href="/" className="text-2xl font-bold tracking-tighter">
-          🛒 MyShop
-        </Link>
-        
-        <div className="flex items-center gap-6">
-          
-          {/* เมนูแอดมิน: เพิ่มสินค้า */}
-          <Link href="/admin/add-product" className="text-sm text-gray-500 hover:text-black transition">
-            + เพิ่มสินค้า
-          </Link>
+        <Link href="/" className="font-bold text-xl tracking-tighter">🛒 MYSHOP</Link>
 
-          {/* เมนูแอดมิน: ดูออเดอร์ (เพิ่งเพิ่มใหม่) */}
-          <Link href="/admin/orders" className="text-sm text-gray-500 hover:text-black transition">
-            📦 ดูออเดอร์
-          </Link>
-
-          {/* ไอคอนตะกร้าสินค้า */}
-          <Link href="/cart" className="relative ml-2 text-gray-800 hover:text-black transition">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="8" cy="21" r="1"/>
-              <circle cx="19" cy="21" r="1"/>
-              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>
-            </svg>
-            
-            {/* Badge สีแดงโชว์จำนวนของในตะกร้า (โชว์เมื่อโหลดฝั่ง Client เสร็จและมีของ > 0) */}
-            {isMounted && totalItems > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold h-5 w-5 rounded-full flex items-center justify-center">
-                {totalItems}
+        <div className="flex items-center gap-4">
+          <Link href="/cart" className="relative p-2 hover:bg-gray-100 rounded-full transition">
+            <ShoppingCart size={22} />
+            {itemCount > 0 && (
+              <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-white font-bold">
+                {itemCount}
               </span>
             )}
           </Link>
-          
+
+          <div>
+            <Link href="/history" className="p-2 hover:bg-gray-100 rounded-full transition">
+              
+              <span className="text-gray-400 hover:text-green-500 transition p-2">ประวัติการสั่งซื้อ</span>
+            </Link>
+          </div>
+
+          {user ? (
+            <div className="flex items-center gap-3">
+              {isAdmin && (
+                <Link href="/admin" className="flex items-center gap-1 text-blue-600 font-medium text-sm bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition">
+                  <LayoutDashboard size={16} />
+                  <span>จัดการร้าน</span>
+                </Link>
+              )}
+              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition p-2">
+                <span>ออกจากระบบ</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Link href="/login" className="text-sm font-medium hover:text-blue-600">เข้าสู่ระบบ</Link>
+              <Link href="/register" className="bg-black text-white text-sm px-4 py-2 rounded-full hover:bg-gray-800 transition">สมัครสมาชิก</Link>
+            </div>
+          )}
         </div>
       </div>
     </nav>

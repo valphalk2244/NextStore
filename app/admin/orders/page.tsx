@@ -1,94 +1,46 @@
-// app/admin/orders/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
 import { supabase } from '@/utils/supabase';
-import Link from 'next/link';
-import OrderStatusDropdown from '@/components/OrderStatusDropdown';
+import { useRouter } from 'next/navigation';
 
-// ฟังก์ชันดึงข้อมูลออเดอร์ทั้งหมด จัดเรียงจากใหม่ไปเก่า
-async function getOrders() {
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('*')
-    .order('created_at', { ascending: false });
+export default function MyOrdersPage() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const router = useRouter();
 
-  if (error) {
-    console.error('Error fetching orders:', error);
-    return [];
-  }
-  return orders;
-}
+  useEffect(() => {
+    const fetchMyOrders = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return router.push('/login');
 
-export default async function AdminOrdersPage() {
-  const orders = await getOrders();
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('customer_email', session.user.email) // สมมติว่าคุณเก็บเมลลูกค้าใน table orders ด้วย
+        .order('created_at', { ascending: false });
+      
+      setOrders(data || []);
+    };
+    fetchMyOrders();
+  }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">📦 จัดการคำสั่งซื้อ (Orders)</h1>
-        <Link href="/" className="text-blue-600 hover:underline">
-          &larr; กลับหน้าแรก
-        </Link>
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm border overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-gray-50 border-b">
-              <th className="p-4 font-semibold text-gray-600">วันที่สั่งซื้อ</th>
-              <th className="p-4 font-semibold text-gray-600">ข้อมูลลูกค้า</th>
-              <th className="p-4 font-semibold text-gray-600">ยอดรวม</th>
-              <th className="p-4 font-semibold text-gray-600">สถานะ</th>
-              <th className="p-4 font-semibold text-gray-600">สินค้าที่สั่ง</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => (
-              <tr key={order.id} className="border-b hover:bg-gray-50 transition">
-                {/* วันที่ (แปลงฟอร์แมตให้อ่านง่ายขึ้น) */}
-                <td className="p-4 text-sm text-gray-500">
-                  {new Date(order.created_at).toLocaleDateString('th-TH', {
-                    year: 'numeric', month: 'short', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                  })}
-                </td>
-                
-                {/* ข้อมูลลูกค้า */}
-                <td className="p-4">
-                  <p className="font-semibold">{order.customer_name}</p>
-                  <p className="text-sm text-gray-500">📞 {order.phone}</p>
-                  <p className="text-xs text-gray-400 mt-1 max-w-[200px] truncate" title={order.address}>
-                    🏠 {order.address}
-                  </p>
-                </td>
-                
-                {/* ยอดเงิน */}
-                <td className="p-4 font-bold text-blue-600">฿{order.total_price}</td>
-                
-                {/* สถานะออเดอร์ */}
-                <td className="p-4">
-                    <OrderStatusDropdown orderId={order.id} currentStatus={order.status} />
-                </td>
-
-                {/* รายการสินค้า (อ่านจาก JSONB ที่เรายัดไว้) */}
-                <td className="p-4">
-                  <ul className="text-sm list-disc list-inside text-gray-600">
-                    {order.items?.map((item: any, index: number) => (
-                      <li key={index}>
-                        {item.name} <span className="text-xs">(x{item.quantity})</span>
-                      </li>
-                    ))}
-                  </ul>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* ถ้ายังไม่มีออเดอร์ให้โชว์ข้อความนี้ */}
-        {orders.length === 0 && (
-          <div className="p-10 text-center text-gray-500">
-            ยังไม่มีคำสั่งซื้อเข้ามาครับ นั่งตบยุงไปก่อน 🦟
+    <main className="container mx-auto px-4 py-10 max-w-3xl">
+      <h1 className="text-3xl font-bold mb-8">ประวัติการสั่งซื้อ</h1>
+      <div className="space-y-4">
+        {orders.map(order => (
+          <div key={order.id} className="bg-white p-6 rounded-2xl border shadow-sm flex justify-between items-center">
+            <div>
+              <p className="text-xs text-gray-400">วันที่: {new Date(order.created_at).toLocaleDateString()}</p>
+              <p className="font-bold">฿{order.total_price.toLocaleString()}</p>
+            </div>
+            <div className={`px-4 py-1 rounded-full text-sm font-bold ${
+              order.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'
+            }`}>
+              {order.status === 'completed' ? 'ส่งแล้ว' : 'รอดำเนินการ'}
+            </div>
           </div>
-        )}
+        ))}
       </div>
     </main>
   );

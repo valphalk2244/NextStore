@@ -2,123 +2,169 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useCartStore } from '@/store/cartStore';
+import { useCartStore, CartItem } from '@/store/cartStore';
 import { supabase } from '@/utils/supabase';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { CldUploadWidget } from 'next-cloudinary';
+import toast from 'react-hot-toast';
 
 export default function CheckoutPage() {
-  const router = useRouter();
   const { items, clearCart } = useCartStore();
   const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // State สำหรับเก็บข้อมูลลูกค้า
+  const [slipUrl, setSlipUrl] = useState('');
   const [customer, setCustomer] = useState({
     name: '',
     phone: '',
     address: ''
   });
+  
+  const router = useRouter();
 
-  useEffect(() => setIsMounted(true), []);
+  // ป้องกัน Hydration Error
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  if (!isMounted) return null;
-
-  // คำนวณยอดรวม
-  const totalPrice = items.reduce((total, item) => total + item.price * item.quantity, 0);
-
-  // ถ้าไม่มีของในตะกร้า ไม่ให้เข้าหน้านี้
-  if (items.length === 0) {
-    return (
-      <div className="container mx-auto px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold mb-4">ไม่มีสินค้าให้สั่งซื้อ</h1>
-        <Link href="/" className="text-blue-600 hover:underline">กลับไปหน้าแรก</Link>
-      </div>
-    );
-  }
+  // คำนวณราคารวมสดๆ เพื่อความแม่นยำและลด Error เรื่อง Type
+  const totalAmount = items.reduce((total: number, item: CartItem) => 
+    total + (item.price * item.quantity), 0
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (items.length === 0) {
+      toast.error('ไม่มีสินค้าในตะกร้า');
+      return;
+    }
+
+    if (!slipUrl) {
+      toast.error('กรุณาอัปโหลดสลิปเพื่อยืนยันการชำระเงิน');
+      return;
+    }
+
     setLoading(true);
 
-    // บันทึกข้อมูลลง Supabase
-    const { error } = await supabase.from('orders').insert([
-      {
-        customer_name: customer.name,
-        phone: customer.phone,
-        address: customer.address,
-        total_price: totalPrice,
-        items: items, // โยน array ของในตะกร้าลง JSONB ได้เลย
-      }
-    ]);
+    try {
+      // บันทึกข้อมูลลงตาราง orders ใน Supabase
+      const { error } = await supabase.from('orders').insert([
+        {
+          customer_name: customer.name,
+          phone: customer.phone,
+          address: customer.address,
+          total_price: totalAmount,
+          items: items, // เก็บเป็น JSONB ใน Database
+          slip_url: slipUrl,
+          status: 'pending' // สถานะเริ่มต้นคือรอตรวจสอบ
+        }
+      ]);
 
-    setLoading(false);
+      if (error) throw error;
 
-    if (error) {
-      alert('เกิดข้อผิดพลาดในการสั่งซื้อ: ' + error.message);
-    } else {
-      alert('🎉 สั่งซื้อสำเร็จ! ขอบคุณที่อุดหนุนครับ');
-      clearCart(); // ล้างตะกร้า
-      router.push('/'); // กลับหน้าแรก
+      toast.success('สั่งซื้อสำเร็จ! ขอบคุณที่ใช้บริการ');
+      clearCart(); // ล้างตะกร้าหลังจากสั่งซื้อสำเร็จ
+      router.push('/checkout/success'); // ไปหน้าขอบคุณ
+
+    } catch (error: any) {
+      toast.error('เกิดข้อผิดพลาด: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
+  if (!isMounted) return null;
+
   return (
-    <main className="container mx-auto px-4 py-8 max-w-2xl">
-      <Link href="/cart" className="text-blue-600 hover:underline mb-6 inline-block">
-        &larr; กลับไปหน้าตะกร้า
-      </Link>
+    <main className="container mx-auto px-4 py-10 max-w-2xl">
+      <h1 className="text-3xl font-bold mb-8 text-center">ที่อยู่จัดส่งและชำระเงิน</h1>
       
-      <h1 className="text-3xl font-bold mb-8">ยืนยันการสั่งซื้อ</h1>
-
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg border shadow-sm space-y-6">
-        
-        <div>
-          <label className="block text-sm font-medium mb-2">ชื่อ-นามสกุล</label>
-          <input 
-            type="text" required 
-            value={customer.name}
-            onChange={(e) => setCustomer({...customer, name: e.target.value})}
-            className="w-full border rounded-md p-2 focus:ring-2 focus:ring-black outline-none"
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+        {/* ฝั่งกรอกข้อมูล */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <h2 className="text-xl font-semibold mb-4">1. ข้อมูลติดต่อ</h2>
+          <input
+            type="text"
+            placeholder="ชื่อ-นามสกุล"
+            required
+            className="input-field"
+            onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">เบอร์โทรศัพท์</label>
-          <input 
-            type="tel" required 
-            value={customer.phone}
-            onChange={(e) => setCustomer({...customer, phone: e.target.value})}
-            className="w-full border rounded-md p-2 focus:ring-2 focus:ring-black outline-none"
+          <input
+            type="tel"
+            placeholder="เบอร์โทรศัพท์"
+            required
+            className="input-field"
+            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">ที่อยู่จัดส่ง</label>
-          <textarea 
-            required rows={3}
-            value={customer.address}
-            onChange={(e) => setCustomer({...customer, address: e.target.value})}
-            className="w-full border rounded-md p-2 focus:ring-2 focus:ring-black outline-none"
+          <textarea
+            placeholder="ที่อยู่สำหรับการจัดส่งโดยละเอียด"
+            required
+            className="input-field h-32 resize-none"
+            onChange={(e) => setCustomer({ ...customer, address: e.target.value })}
           />
+          
+          <div className="pt-4">
+            <button
+              disabled={loading || !slipUrl}
+              className="btn-primary w-full py-4 text-lg shadow-lg"
+            >
+              {loading ? 'กำลังบันทึกข้อมูล...' : 'ยืนยันการสั่งซื้อ'}
+            </button>
+          </div>
+        </form>
+
+        {/* ฝั่งสรุปยอดและโอนเงิน */}
+        <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+          <h2 className="text-xl font-semibold mb-4">2. ชำระเงิน</h2>
+          <div className="mb-6 space-y-2">
+            <div className="flex justify-between text-gray-600">
+              <span>จำนวนสินค้า</span>
+              <span>{items.length} รายการ</span>
+            </div>
+            <div className="flex justify-between text-xl font-bold border-t pt-2">
+              <span>ยอดโอนสุทธิ</span>
+              <span className="text-red-600">฿{totalAmount.toLocaleString()}</span>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-dashed border-gray-300 text-center">
+            <p className="text-sm text-gray-500 mb-2">สแกนเพื่อโอนเงิน (PromptPay)</p>
+            {/* คุณสามารถใส่รูป QR Code ของคุณที่นี่ */}
+            <div className="bg-gray-200 w-40 h-40 mx-auto mb-4 flex items-center justify-center rounded">
+               <span className="text-xs text-gray-400 text-center px-2">รูป QR Code <br/> พร้อมเพย์ของคุณ</span>
+            </div>
+
+            {slipUrl ? (
+              <div className="relative inline-block">
+                <img src={slipUrl} alt="slip" className="h-56 rounded-lg shadow-md" />
+                <button 
+                  type="button"
+                  onClick={() => setSlipUrl('')}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <CldUploadWidget 
+                uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
+                onSuccess={(res: any) => setSlipUrl(res.info.secure_url)}
+              >
+                {({ open }) => (
+                  <button 
+                    type="button" 
+                    onClick={() => open()}
+                    className="w-full bg-blue-50 text-blue-600 border border-blue-200 py-3 rounded-xl font-medium hover:bg-blue-100 transition"
+                  >
+                    📸 อัปโหลดสลิปโอนเงิน
+                  </button>
+                )}
+              </CldUploadWidget>
+            )}
+          </div>
         </div>
-
-        <div className="border-t pt-4 mt-6">
-          <p className="text-lg flex justify-between font-bold">
-            <span>ยอดชำระเงินทั้งหมด:</span>
-            <span className="text-blue-600">฿{totalPrice}</span>
-          </p>
-        </div>
-
-        <button 
-          type="submit" 
-          disabled={loading}
-          className="w-full bg-black text-white py-3 rounded-md font-semibold hover:bg-gray-800 transition disabled:bg-gray-400"
-        >
-          {loading ? 'กำลังประมวลผล...' : 'ยืนยันการสั่งซื้อ'}
-        </button>
-
-      </form>
+      </div>
     </main>
   );
 }
