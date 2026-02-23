@@ -53,7 +53,6 @@ export default function Navbar() {
               </span>
             )}
           </Link>
-
           <div>
             <Link href="/history" className="p-2 hover:bg-gray-100 rounded-full transition">
               
